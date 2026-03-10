@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Face Mo-cap VRM</title>
+  </head>
+  <body>
+    <div id="app">
+      <div id="ui">
+        <div id="live-panel" class="panel">
+          <button type="button" id="start-cam">Start camera</button>
+          <span id="cam-status"></span>
+        </div>
+        <div id="topbar-actions" class="panel">
+          <div id="file-menu-wrap">
+            <button type="button" id="file-menu-btn" aria-haspopup="true" aria-expanded="false">
+              File
+            </button>
+            <div id="file-menu" class="hidden">
+              <button type="button" id="import-recording-btn" class="menu-item">
+                Import recording...
+              </button>
+              <button type="button" id="import-audio-btn" class="menu-item">
+                Import audio...
+              </button>
+              <button type="button" id="export-recording-btn" class="menu-item hidden">
+                Export recording...
+              </button>
+            </div>
+          </div>
+          <input type="file" id="load-recording" accept=".json" class="hidden" />
+          <input
+            type="file"
+            id="load-audio"
+            accept=".mp3,.webm,.wav,audio/*"
+            title="Optional: load matching .audio.mp3"
+            class="hidden"
+          />
+          <button type="button" id="settings-btn">Settings</button>
+        </div>
+        <div id="topbar-model" class="panel">
+          <select id="sample-vrm">
+            <option value="">-- Sample VRM --</option>
+          </select>
+          <label
+            >Pose:
+            <select id="vrm-pose">
+              <option value="arms-at-sides">Arms at sides</option>
+              <option value="t-pose">T-pose</option>
+            </select></label
+          >
+        </div>
+      </div>
+      <div id="settings-panel" class="hidden">
+        <section class="settings-section">
+          <h3>Scene</h3>
+          <div class="settings-row">
+            <label>Custom VRM: <input type="file" id="load-vrm" accept=".vrm" /></label>
+          </div>
+        </section>
+      </div>
+      <div id="viewport">
+        <canvas id="canvas"></canvas>
+        <div id="camera-preview" class="hidden">
+          <div id="camera-preview-header" title="Drag to move">
+            <span>Camera</span>
+            <button type="button" id="camera-preview-minimize" aria-label="Minimize" title="Minimize">−</button>
+          </div>
+          <div id="camera-preview-body">
+            <video id="video" playsinline muted></video>
+            <canvas id="camera-overlay"></canvas>
+            <div id="tracking-status"></div>
+          </div>
+          <div class="camera-preview-resize camera-preview-resize-n" data-resize="n"></div>
+          <div class="camera-preview-resize camera-preview-resize-s" data-resize="s"></div>
+          <div class="camera-preview-resize camera-preview-resize-e" data-resize="e"></div>
+          <div class="camera-preview-resize camera-preview-resize-w" data-resize="w"></div>
+          <div class="camera-preview-resize camera-preview-resize-ne" data-resize="ne"></div>
+          <div class="camera-preview-resize camera-preview-resize-nw" data-resize="nw"></div>
+          <div class="camera-preview-resize camera-preview-resize-se" data-resize="se"></div>
+          <div class="camera-preview-resize camera-preview-resize-sw" data-resize="sw"></div>
+        </div>
+        <button
+          type="button"
+          id="audio-sidebar-toggle"
+          class="hidden"
+          aria-label="Open audio sidebar"
+          title="Open audio sidebar"
+        >
+          <img
+            src="https://11labs-nonprd-15f22c1d.s3.eu-west-3.amazonaws.com/a2ea339b-8b5e-41bb-b706-24eda8a4c9e3/elevenlabs-symbol.svg"
+            alt="ElevenLabs"
+          />
+        </button>
+      </div>
+      <aside id="audio-sidebar" class="hidden">
+        <div id="audio-sidebar-header">
+          <div id="audio-sidebar-title">
+            <img
+              src="https://11labs-nonprd-15f22c1d.s3.eu-west-3.amazonaws.com/a2ea339b-8b5e-41bb-b706-24eda8a4c9e3/elevenlabs-symbol.svg"
+              alt=""
+            />
+            <span>ElevenLabs Audio</span>
+          </div>
+          <button type="button" id="audio-sidebar-close" aria-label="Close audio sidebar">
+            ×
+          </button>
+        </div>
+        <div id="audio-sidebar-body">
+          <section class="audio-sidebar-section">
+            <label
+              >API key:
+              <input
+                type="password"
+                id="elevenlabs-api-key"
+                placeholder="xi-..."
+                autocomplete="off"
+            /></label>
+            <button type="button" id="fetch-voices-btn">Fetch voices</button>
+            <span id="fetch-voices-status"></span>
+          </section>
+          <section class="audio-sidebar-section">
+            <label
+              >Voice:
+              <select id="elevenlabs-voice">
+                <option value="">-- Select voice (fetch first) --</option>
+              </select></label
+            >
+            <button type="button" id="apply-elevenlabs-btn" disabled>
+              Generate variant
+            </button>
+            <span id="elevenlabs-status"></span>
+          </section>
+          <section class="audio-sidebar-section">
+            <details class="elevenlabs-options-accordion">
+              <summary>Conversion options</summary>
+              <div class="elevenlabs-options-fields">
+                <label>Model
+                  <input type="text" id="elevenlabs-model-id" value="eleven_english_sts_v2" placeholder="eleven_english_sts_v2" />
+                </label>
+                <label>Stability (0–1)
+                  <input type="number" id="elevenlabs-stability" min="0" max="1" step="0.01" value="0.5" />
+                </label>
+                <label>Consistency / similarity (0–1)
+                  <input type="number" id="elevenlabs-similarity" min="0" max="1" step="0.01" value="0.75" />
+                </label>
+                <label class="elevenlabs-options-check">
+                  <input type="checkbox" id="elevenlabs-remove-noise" />
+                  Remove background noise
+                </label>
+                <label>Output format
+                  <select id="elevenlabs-output-format">
+                    <option value="">Default</option>
+                    <option value="mp3_44100_128">MP3 44.1kHz 128k</option>
+                    <option value="pcm_16000">PCM 16kHz</option>
+                    <option value="pcm_22050">PCM 22.05kHz</option>
+                    <option value="pcm_24000">PCM 24kHz</option>
+                    <option value="pcm_44100">PCM 44.1kHz</option>
+                  </select>
+                </label>
+              </div>
+            </details>
+          </section>
+          <section class="audio-sidebar-section">
+            <div id="audio-library-empty">Load or record audio to populate this list.</div>
+            <div id="audio-library"></div>
+          </section>
+        </div>
+      </aside>
+      <div id="playback-toolbar">
+        <div id="playback-toolbar-spacer"></div>
+        <div id="playback-toolbar-center">
+          <div id="transport-panel" class="panel">
+            <button type="button" id="skip-back" title="Skip back 5s">⏪</button>
+            <button type="button" id="skip-fwd" title="Skip forward 5s">⏩</button>
+            <button type="button" id="stop-btn" disabled title="Stop">⏹</button>
+            <button type="button" id="play-btn" disabled title="Play / Record">▶</button>
+            <button type="button" id="record-enable-btn" title="Record enable (then Play to record)">●</button>
+            <span id="record-status"></span>
+          </div>
+          <div id="playback-panel" class="panel">
+            <input type="range" id="seek" min="0" max="100" value="0" />
+            <span id="playback-time">0:00 / 0:00</span>
+          </div>
+        </div>
+        <div id="playback-toolbar-right"></div>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
