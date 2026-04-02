@@ -6,6 +6,7 @@ import {
 } from "./faceCapture.js";
 import {
   initScene,
+  resizeRenderer,
   loadVRMFromUrl,
   loadVRMFromFile,
   getVRM,
@@ -28,6 +29,11 @@ import {
   addFrame,
   parseRecording,
   downloadRecordingWithAudio,
+  buildCompactFrameRow,
+  compactRowsNearEqual,
+  KEYFRAME_EPS_VALUES,
+  KEYFRAME_EPS_MATRIX,
+  KEYFRAME_MAX_GAP_SEC,
 } from "./recording.js";
 import {
   createPlaybackState,
@@ -40,6 +46,7 @@ import {
 import * as elevenlabs from "./elevenlabs.js";
 
 const canvas = document.getElementById("canvas");
+const viewportEl = document.getElementById("viewport");
 const video = document.getElementById("video");
 const startCamBtn = document.getElementById("start-cam");
 const camStatus = document.getElementById("cam-status");
@@ -72,6 +79,8 @@ const importAudioBtn = document.getElementById("import-audio-btn");
 const settingsBtn = document.getElementById("settings-btn");
 const settingsPanel = document.getElementById("settings-panel");
 const exportRecordingBtn = document.getElementById("export-recording-btn");
+const exportBasenameRow = document.getElementById("export-basename-row");
+const exportBasenameInput = document.getElementById("export-basename");
 const elevenlabsApiKeyInput = document.getElementById("elevenlabs-api-key");
 const fetchVoicesBtn = document.getElementById("fetch-voices-btn");
 const elevenlabsVoiceSelect = document.getElementById("elevenlabs-voice");
@@ -85,6 +94,7 @@ let stream = null;
 let faceCaptureReady = false;
 let recording = null;
 let recordingStartTime = 0;
+let nextSampleRecordT = 0;
 let mediaRecorder = null;
 let audioChunks = [];
 let playbackState = null;
@@ -93,17 +103,18 @@ let recordArmed = false;
 let audioLibrary = [];
 let nextAudioClipId = 1;
 let activeAudioClipId = null;
+const publicBase = import.meta.env.BASE_URL;
 const SAMPLE_VRMS = [
   {
     label: "Altair",
-    url: "/model_original_1773065783.vrm",
+    url: `${publicBase}model_original_1773065783.vrm`,
     rotationY: Math.PI,
     positionY: -0.4,
     headPitchSign: -1,
   },
   {
     label: "Ground Control",
-    url: "/model_original_1773089969.vrm",
+    url: `${publicBase}model_original_1773089969.vrm`,
     rotationY: Math.PI,
     headPitchSign: -1,
     positionY: -0.4,
@@ -300,8 +311,8 @@ function resizeCameraOverlay() {
   if (!cameraOverlay) return;
   const el = cameraPreviewBody || cameraPreview;
   if (!el) return;
-  const w = el.offsetWidth;
-  const h = el.offsetHeight;
+  const w = Math.floor(el.offsetWidth);
+  const h = Math.floor(el.offsetHeight);
   if (
     w > 0 &&
     h > 0 &&
@@ -310,6 +321,11 @@ function resizeCameraOverlay() {
     cameraOverlay.width = w;
     cameraOverlay.height = h;
   }
+}
+
+function onViewportLayoutChange() {
+  resizeRenderer();
+  resizeCameraOverlay();
 }
 
 function drawLandmarks(ctx, landmarks) {
@@ -345,6 +361,9 @@ function updateTransportButtons() {
     const canExport = !!playbackState?.recording;
     exportRecordingBtn.classList.toggle("hidden", !canExport);
     exportRecordingBtn.disabled = !canExport;
+  }
+  if (exportBasenameRow) {
+    exportBasenameRow.classList.toggle("hidden", !playbackState?.recording);
   }
 }
 
@@ -426,6 +445,25 @@ if (elevenlabsApiKeyInput) {
 }
 
 initScene(canvas);
+
+if (typeof ResizeObserver !== "undefined") {
+  if (viewportEl) {
+    const ro = new ResizeObserver(() => {
+      requestAnimationFrame(onViewportLayoutChange);
+    });
+    ro.observe(viewportEl);
+  }
+  if (cameraPreview) {
+    const roPreview = new ResizeObserver(() => {
+      requestAnimationFrame(resizeCameraOverlay);
+    });
+    roPreview.observe(cameraPreview);
+  }
+}
+window.addEventListener("resize", () => {
+  requestAnimationFrame(onViewportLayoutChange);
+});
+requestAnimationFrame(onViewportLayoutChange);
 
 if (canvas) {
   canvas.addEventListener(
@@ -570,7 +608,6 @@ startCamBtn.addEventListener("click", async () => {
   await startCamera();
 });
 
-const viewportEl = document.getElementById("viewport");
 const cameraPreviewHeader = document.getElementById("camera-preview-header");
 const cameraPreviewMinimizeBtn = document.getElementById(
   "camera-preview-minimize",
@@ -713,7 +750,7 @@ if (exportRecordingBtn) {
     await downloadRecordingWithAudio(
       playbackState.recording,
       playbackState.audioBlob ?? null,
-      `face-mocap-${Date.now()}`,
+      resolvedExportBasename(),
     );
   });
 }
@@ -723,6 +760,7 @@ function startRecording() {
   const names = getCoefficientNames();
   recording = createRecording(names);
   recordingStartTime = performance.now() / 1000;
+  nextSampleRecordT = 0;
   audioChunks = [];
   const audioTrack = stream.getAudioTracks?.()?.[0];
   if (audioTrack) {
@@ -768,9 +806,42 @@ function stopRecording() {
   }
 }
 
-function loadRecordingIntoPlayback(rec, audioBlob = null, autoplay = false) {
+function sanitizeExportBasenameStem(raw) {
+  let s = String(raw ?? "")
+    .trim()
+    .replace(/\.json$/i, "");
+  s = s.replace(/[/\\:*?"<>|]/g, "_").replace(/^\.+/, "");
+  return s;
+}
+
+function defaultExportBasename() {
+  return `face-mocap-${Date.now()}`;
+}
+
+function applyExportBasenameHint(hintFilename) {
+  if (!exportBasenameInput) return;
+  const stem = sanitizeExportBasenameStem(
+    typeof hintFilename === "string"
+      ? hintFilename.replace(/\.json$/i, "").trim()
+      : "",
+  );
+  exportBasenameInput.value = stem || defaultExportBasename();
+}
+
+function resolvedExportBasename() {
+  const stem = sanitizeExportBasenameStem(exportBasenameInput?.value);
+  return stem || defaultExportBasename();
+}
+
+function loadRecordingIntoPlayback(
+  rec,
+  audioBlob = null,
+  autoplay = false,
+  exportNameHint = null,
+) {
   clearPlaybackAudio();
   playbackState = createPlaybackState(rec);
+  applyExportBasenameHint(exportNameHint);
   coeffToVrmMapping = buildCoeffToVrmMapping(rec.names);
   seekSlider.max = Math.max(1, Math.floor(playbackState.duration * 100));
   setPlaybackTime(playbackState, 0);
@@ -796,7 +867,7 @@ loadRecordingInput.addEventListener("change", (e) => {
   r.onload = () => {
     try {
       const rec = parseRecording(r.result);
-      loadRecordingIntoPlayback(rec, null, false);
+      loadRecordingIntoPlayback(rec, null, false, file.name);
     } catch (err) {
       console.error(err);
     }
@@ -1011,8 +1082,38 @@ function animate() {
     if (result && recordArmed) {
       if (recording) {
         const t = performance.now() / 1000 - recordingStartTime;
-        addFrame(recording, t, result.values, result.faceMatrix);
         recordStatus.textContent = `Recording… ${formatTime(t)}`;
+        const fps = recording.fps || 30;
+        const dt = 1 / fps;
+        if (t + 1e-9 >= nextSampleRecordT) {
+          const stamp = nextSampleRecordT;
+          nextSampleRecordT += dt;
+          const row = buildCompactFrameRow(
+            stamp,
+            result.values,
+            result.faceMatrix,
+          );
+          const nl = recording.names.length;
+          const frames = recording.frames;
+          let push = true;
+          if (frames.length > 0) {
+            const last = frames[frames.length - 1];
+            const gap = stamp - last[0];
+            if (
+              gap < KEYFRAME_MAX_GAP_SEC &&
+              compactRowsNearEqual(
+                last,
+                row,
+                nl,
+                KEYFRAME_EPS_VALUES,
+                KEYFRAME_EPS_MATRIX,
+              )
+            ) {
+              push = false;
+            }
+          }
+          if (push) addFrame(recording, row);
+        }
       }
       if (getVRM() && !(playbackState && playbackState.playing)) {
         coeffToVrmMapping = buildCoeffToVrmMapping(result.names);

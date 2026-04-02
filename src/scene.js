@@ -449,22 +449,22 @@ export function initScene(canvas) {
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1;
   renderer.shadowMap.enabled = true;
-  resize();
+  resizeRenderer();
 
   loader = new GLTFLoader();
   loader.register((parser) => new VRMLoaderPlugin(parser));
 
-  window.addEventListener("resize", resize);
   return { scene, camera, renderer };
 }
 
-function resize() {
-  if (!renderer) return;
+export function resizeRenderer() {
+  if (!renderer || !camera) return;
   const canvas = renderer.domElement;
-  const w = canvas.clientWidth;
-  const h = canvas.clientHeight;
+  const w = Math.floor(canvas.clientWidth);
+  const h = Math.floor(canvas.clientHeight);
+  if (w < 1 || h < 1) return;
   if (canvas.width !== w || canvas.height !== h) {
-    renderer.setSize(w, h);
+    renderer.setSize(w, h, false);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
   }

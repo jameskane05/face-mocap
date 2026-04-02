@@ -18,7 +18,7 @@ The JSON has this shape:
 }
 ```
 
-- **version**: Integer. Supported range in the recorder is 1–3. Reject or warn if outside a range your importer supports.
+- **version**: Integer. Supported range in the app is 1–4. Reject or warn if outside a range your importer supports.
 - **fps**: Number. Frame rate of the capture (usually 30). Use for duration and sampling:  
   `duration_seconds = (last frame's `t`) + (1 / fps)`.
 - **names**: Array of strings. **Order is fixed**: the same 52 ARKit-style blend shape names every time (see list below). Each element of `values` corresponds to the same index in `names`.
@@ -26,6 +26,16 @@ The JSON has this shape:
   - **t**: Time in seconds from the start of the recording.
   - **values**: Array of numbers, length = `names.length`. Weights for each blend shape, typically in `[0, 1]`. Same index = same name (e.g. `values[0]` is `names[0]`).
   - **faceMatrix**: Optional array of 16 numbers. 4×4 transformation matrix for **head pose** (position + orientation) in column-major order (indices 0–3 = column 0, 4–7 = column 1, 8–11 = column 2, 12–15 = column 3). Comes from MediaPipe’s “facial transformation matrix”. If missing, you only have expressions; head pose is unchanged or use identity.
+
+### Version 4 (compact frames)
+
+New exports use `version: 4`. Each element of `frames` is a **single array** of length `1 + names.length + 16`:
+
+- Index `0`: time `t` (seconds).
+- Indices `1` … `names.length`: blend shape weights in `names` order.
+- Indices `1 + names.length` … end: 16 head matrix values (same column-major 4×4 as v3). If head data was absent at capture, these are zeros.
+
+Sampling and interpolation are unchanged: treat each row as one keyframe with the same `t`, `values`, and `faceMatrix` semantics as v3.
 
 ## Blend shape names (order)
 
@@ -123,7 +133,7 @@ The app can export a separate audio file (e.g. `.audio.mp3`) with the same base 
 
 ## Summary for an AI / implementer
 
-- **JSON**: `version`, `fps`, `names` (52 ARKit names), `frames` (each: `t` in seconds, `values` array, optional `faceMatrix` 16 floats column-major 4×4).
+- **JSON**: `version`, `fps`, `names` (52 ARKit names), `frames` (v1–v3: objects with `t`, `values`, optional `faceMatrix`; v4: one numeric array per frame as above).
 - **Playback**: Advance time by delta; sample `values` and optional `faceMatrix` by interpolating between bracketing frames.
 - **Use**: `names[i]` → your character’s blend shape; `faceMatrix` → head bone transform (or extract rotation/position for your rig).
 - **Orientation**: Y-up; rotate avatar root (e.g. 180° Y) so the character faces the camera; apply head pose in camera-relative space or transform by that root rotation.

@@ -9,12 +9,14 @@
 body {
   margin: 0;
   min-height: 100vh;
+  min-height: 100dvh;
 }
 
 #app {
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh;
 }
 
 #ui {
@@ -95,7 +97,7 @@ body {
   position: absolute;
   top: calc(100% + 0.35rem);
   left: 0;
-  min-width: 180px;
+  min-width: 220px;
   display: flex;
   flex-direction: column;
   gap: 0;
@@ -126,6 +128,36 @@ body {
 #file-menu .menu-item:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+#file-menu .file-menu-field {
+  padding: 0.45rem 0.9rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+#file-menu .file-menu-field.hidden {
+  display: none !important;
+}
+#file-menu .file-menu-field label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.75;
+}
+#file-menu .file-menu-field input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid #555;
+  border-radius: 6px;
+  background: #111;
+  color: inherit;
+  font-size: 0.85rem;
+}
+#file-menu .file-menu-field input:focus {
+  outline: none;
+  border-color: #646cff;
 }
 
 #viewport {

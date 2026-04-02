@@ -1,9 +1,27 @@
+function frameTime(f) {
+  return Array.isArray(f) ? f[0] : f.t;
+}
+
+function frameValues(f, nl) {
+  return Array.isArray(f) ? f.slice(1, 1 + nl) : f.values;
+}
+
+function frameMatrixArray(f, nl) {
+  if (Array.isArray(f)) {
+    const m = f.slice(1 + nl, 1 + nl + 16);
+    return m.length === 16 ? m : null;
+  }
+  const m = f.faceMatrix;
+  return Array.isArray(m) ? m : null;
+}
+
 export function createPlaybackState(recording) {
   const fps = recording.fps || 30;
   const frameDuration = 1 / fps;
+  const frames = recording.frames;
   const animationDuration =
-    recording.frames.length > 0
-      ? recording.frames[recording.frames.length - 1].t + frameDuration
+    frames.length > 0
+      ? frameTime(frames[frames.length - 1]) + frameDuration
       : 0;
   return {
     recording,
@@ -27,6 +45,7 @@ export function setPlaybackAudioDuration(state, audioDuration) {
 export function sampleAt(state) {
   const { recording, currentTime } = state;
   const frames = recording.frames;
+  const nl = recording.names.length;
   if (frames.length === 0)
     return {
       names: recording.names,
@@ -34,41 +53,46 @@ export function sampleAt(state) {
       faceMatrix: null,
     };
   if (frames.length === 1) {
+    const f0 = frames[0];
+    const m = frameMatrixArray(f0, nl);
     return {
       names: recording.names,
-      values: frames[0].values,
-      faceMatrix: frames[0].faceMatrix ? { data: frames[0].faceMatrix } : null,
+      values: frameValues(f0, nl),
+      faceMatrix: m ? { data: m } : null,
     };
   }
 
   let i = 0;
-  while (i < frames.length - 1 && frames[i + 1].t <= currentTime) i++;
+  while (i < frames.length - 1 && frameTime(frames[i + 1]) <= currentTime) i++;
   if (i >= frames.length - 1) {
     const frame = frames[frames.length - 1];
+    const m = frameMatrixArray(frame, nl);
     return {
       names: recording.names,
-      values: frame.values,
-      faceMatrix: frame.faceMatrix ? { data: frame.faceMatrix } : null,
+      values: frameValues(frame, nl),
+      faceMatrix: m ? { data: m } : null,
     };
   }
   const a = frames[i];
   const b = frames[i + 1];
-  const span = b.t - a.t;
-  const t = span > 0 ? (currentTime - a.t) / span : 0;
-  const values = a.values.map((v, j) => v + t * (b.values[j] - v));
+  const ta = frameTime(a);
+  const tb = frameTime(b);
+  const span = tb - ta;
+  const t = span > 0 ? (currentTime - ta) / span : 0;
+  const va = frameValues(a, nl);
+  const vb = frameValues(b, nl);
+  const values = va.map((v, j) => v + t * (vb[j] - v));
   let faceMatrix = null;
-  if (
-    Array.isArray(a.faceMatrix) &&
-    Array.isArray(b.faceMatrix) &&
-    a.faceMatrix.length === b.faceMatrix.length
-  ) {
+  const ma = frameMatrixArray(a, nl);
+  const mb = frameMatrixArray(b, nl);
+  if (ma && mb && ma.length === mb.length) {
     faceMatrix = {
-      data: a.faceMatrix.map((v, j) => v + t * (b.faceMatrix[j] - v)),
+      data: ma.map((v, j) => v + t * (mb[j] - v)),
     };
-  } else if (Array.isArray(a.faceMatrix)) {
-    faceMatrix = { data: a.faceMatrix };
-  } else if (Array.isArray(b.faceMatrix)) {
-    faceMatrix = { data: b.faceMatrix };
+  } else if (ma) {
+    faceMatrix = { data: ma };
+  } else if (mb) {
+    faceMatrix = { data: mb };
   }
   return { names: recording.names, values, faceMatrix };
 }
